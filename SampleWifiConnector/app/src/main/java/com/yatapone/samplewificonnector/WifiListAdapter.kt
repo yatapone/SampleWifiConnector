@@ -1,5 +1,6 @@
 package com.yatapone.samplewificonnector
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 
@@ -28,12 +29,12 @@ class WifiListAdapter : ListAdapter<Wifi, WifiListAdapter.WifiListViewHolder>(Di
 
     class DiffCallback : DiffUtil.ItemCallback<Wifi>() {
         override fun areItemsTheSame(oldItem: Wifi, newItem: Wifi): Boolean {
-            //            Log.d("DiffCallback", "areItemsTheSame: oldItem=$oldItem, newItem=$newItem")
+            // Log.d("DiffCallback", "areItemsTheSame: oldItem=$oldItem, newItem=$newItem")
             return oldItem.ssid == newItem.ssid
         }
 
         override fun areContentsTheSame(oldItem: Wifi, newItem: Wifi): Boolean {
-            //            Log.d("DiffCallback", "areContentsTheSame: oldItem=$oldItem, newItem=$newItem")
+            // Log.d("DiffCallback", "areContentsTheSame: oldItem=$oldItem, newItem=$newItem")
             return oldItem == newItem
         }
     }

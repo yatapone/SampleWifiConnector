@@ -47,6 +47,8 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     scanFailure()
                 }
+
+                refreshWifiList()
             }
         }
         val intentFilter = IntentFilter()
@@ -75,6 +77,8 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+
+        refreshWifiList()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -85,36 +89,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshWifiList() {
+        Log.d(TAG, "refreshWifiList: ")
+        val wifiList: ArrayList<Wifi> = ArrayList()
+        val scanResults: List<ScanResult> = wifiManager.scanResults
+        scanResults.forEach {
+            Log.d(TAG, "refreshWifiList: scanResults=$it")
+            val ssid = it.SSID
+            val waveLevel = it.level
+            val securityType = when {
+                it.capabilities.contains("WEP") -> "WEP"
+                it.capabilities.contains("PSK") -> "PSK"
+                it.capabilities.contains("EAP") -> "EAP"
+                else -> "N/A"
+            }
+            if (ssid != null && ssid != "") {
+                wifiList.add(Wifi(ssid, waveLevel, securityType))
+            }
+        }
+        wifiListAdapter.submitList(wifiList.sortedByDescending { it.waveLevel })
+    }
+
     private fun scanSuccess() {
         Log.d(TAG, "scanSuccess: ")
-
-        val wifiStatus = wifiManager.wifiState
-        Log.d(TAG, "scanWifi: wifiState=$wifiStatus")
-        if (wifiStatus == WifiManager.WIFI_STATE_ENABLED) {
-            val wifiListNew: ArrayList<Wifi> = ArrayList()
-            val scanResults: List<ScanResult> = wifiManager.scanResults
-            scanResults.forEach {
-                Log.d(TAG, "scanWifi: scanResults=$it")
-                val ssid = it.SSID
-                val waveLevel = it.level
-                val securityType = when {
-                    it.capabilities.contains("WEP") -> "WEP"
-                    it.capabilities.contains("PSK") -> "PSK"
-                    it.capabilities.contains("EAP") -> "EAP"
-                    else -> "N/A"
-                }
-                if (ssid != null && ssid != "") {
-                    wifiListNew.add(Wifi(ssid, waveLevel, securityType))
-                }
-            }
-            wifiListAdapter.submitList(wifiListNew.sortedByDescending { it.waveLevel })
-        } else {
-            wifiListAdapter.submitList(emptyList())
-        }
+        // Something processing
     }
 
     private fun scanFailure() {
         Log.d(TAG, "scanFailure: ")
+        // Something processing
+        Log.d(TAG, "scanFailure: wifiState=${wifiManager.wifiState}")
     }
 
     override fun onPause() {

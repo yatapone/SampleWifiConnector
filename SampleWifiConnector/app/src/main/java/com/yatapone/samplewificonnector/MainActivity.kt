@@ -5,27 +5,40 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.*
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
+import android.net.wifi.WifiNetworkSpecifier
+import android.net.wifi.WifiNetworkSuggestion
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.yatapone.samplewificonnector.databinding.ActivityMainBinding
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val PERMISSION_REQUEST_CODE = 999
+        private const val SECURITY_TYPE_WPA3 = "WPA3"
+        private const val SECURITY_TYPE_WPA2 = "WPA2"
+        private const val SECURITY_TYPE_WPA = "WPA"
+        private const val SECURITY_TYPE_NA = "N/A"
     }
 
-    private lateinit var binding: ActivityMainBinding
-    private val wifiListAdapter = WifiListAdapter()
-    private lateinit var wifiManager: WifiManager
-    private lateinit var wifiScanReceiver: BroadcastReceiver
     private var permissionRejected: Boolean = false
     private var isDialogDisplayed: Boolean = false
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var wifiListAdapter: WifiListAdapter
+    private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var wifiManager: WifiManager
+    private lateinit var wifiScanReceiver: BroadcastReceiver
+    private lateinit var suggestionPostConnectionReceiver: BroadcastReceiver
+    private lateinit var networkCallback: ConnectivityManager.NetworkCallback
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,27 +46,25 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        wifiListAdapter = WifiListAdapter { wifi -> onClickWifi(wifi) }
         binding.recyclerView.adapter = wifiListAdapter
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
 
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
 
         wifiScanReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 val success = intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false)
                 Log.d(TAG, "onReceive: success=$success")
-                if (success) {
-                    scanSuccess()
-                } else {
-                    scanFailure()
-                }
+                // success or failure processing
 
                 refreshWifiList()
             }
         }
         val intentFilter = IntentFilter()
         intentFilter.addAction(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
-        applicationContext.registerReceiver(wifiScanReceiver, intentFilter)
+        registerReceiver(wifiScanReceiver, intentFilter)
     }
 
     override fun onResume() {
@@ -79,6 +90,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         refreshWifiList()
+
+        connectivityManager.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network : Network) {
+                Log.d(TAG, "onAvailable: The default network is now: $network")
+            }
+
+            override fun onLost(network : Network) {
+                Log.d(TAG, "onLost: The application no longer has a default network. The last default network was $network")
+            }
+
+            override fun onCapabilitiesChanged(network : Network, networkCapabilities : NetworkCapabilities) {
+                Log.d(TAG, "onCapabilitiesChanged: The default network changed capabilities: $networkCapabilities")
+            }
+
+            override fun onLinkPropertiesChanged(network : Network, linkProperties : LinkProperties) {
+                Log.d(TAG, "onLinkPropertiesChanged: The default network changed link properties: $linkProperties")
+            }
+        })
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -91,6 +120,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshWifiList() {
         Log.d(TAG, "refreshWifiList: ")
+        // refresh update time
+        val localDateTime = LocalDateTime.now()
+        val dateTimeFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd(E) HH:mm:ss")
+        binding.statusText.text = dateTimeFormat.format(localDateTime)
+
+        // refresh wifi list
         val wifiList: ArrayList<Wifi> = ArrayList()
         val scanResults: List<ScanResult> = wifiManager.scanResults
         scanResults.forEach {
@@ -98,27 +133,101 @@ class MainActivity : AppCompatActivity() {
             val ssid = it.SSID
             val waveLevel = it.level
             val securityType = when {
-                it.capabilities.contains("WEP") -> "WEP"
-                it.capabilities.contains("PSK") -> "PSK"
-                it.capabilities.contains("EAP") -> "EAP"
-                else -> "N/A"
+                it.capabilities.contains(SECURITY_TYPE_WPA3) -> SECURITY_TYPE_WPA3
+                it.capabilities.contains(SECURITY_TYPE_WPA2) -> SECURITY_TYPE_WPA2
+                it.capabilities.contains(SECURITY_TYPE_WPA) -> SECURITY_TYPE_WPA
+                else -> SECURITY_TYPE_NA
             }
-            if (ssid != null && ssid != "") {
-                wifiList.add(Wifi(ssid, waveLevel, securityType))
-            }
+
+            // Comment out the following if you need to manage stealth wifi.
+            if (ssid == null || ssid == "") { return@forEach }
+
+            wifiList.add(Wifi(ssid, waveLevel, securityType))
         }
         wifiListAdapter.submitList(wifiList.sortedByDescending { it.waveLevel })
     }
 
-    private fun scanSuccess() {
-        Log.d(TAG, "scanSuccess: ")
-        // Something processing
+    private fun onClickWifi(wifi: Wifi) {
+        Log.d(TAG, "onClickWifi: wifi=$wifi")
+
+        val editText = AppCompatEditText(this)
+        AlertDialog.Builder(this)
+            .setTitle("Connect to ${wifi.ssid}")
+            .setMessage("input passphrase.")
+            .setView(editText)
+            .setPositiveButton("connect") { dialog, _ ->
+                if (binding.radioSuggestion.isChecked) {
+                    connectByWifiNetworkSuggestion(wifi, editText.text.toString())
+                } else {
+                    connectByWifiNetworkSpecifier(wifi, editText.text.toString())
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("cancel") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .show()
     }
 
-    private fun scanFailure() {
-        Log.d(TAG, "scanFailure: ")
-        // Something processing
-        Log.d(TAG, "scanFailure: wifiState=${wifiManager.wifiState}")
+    private fun connectByWifiNetworkSuggestion(wifi: Wifi, pass: String) {
+        Log.d(TAG, "connectByWifiNetworkSuggestion: wifi=$wifi, pass=$pass")
+        val suggestion = WifiNetworkSuggestion.Builder()
+            .setSsid(wifi.ssid)
+        when (wifi.securityType) {
+            SECURITY_TYPE_WPA3 -> suggestion.setWpa3Passphrase(pass)
+            SECURITY_TYPE_WPA2 -> suggestion.setWpa2Passphrase(pass)
+            SECURITY_TYPE_WPA -> suggestion.setWpa2Passphrase(pass)
+            SECURITY_TYPE_NA -> suggestion.setWpa2Passphrase(pass)
+            else -> suggestion.setWpa2Passphrase(pass)
+        }
+        val suggestionsList = listOf(suggestion.build())
+        val status = wifiManager.addNetworkSuggestions(suggestionsList)
+        Log.d(TAG, "connectByWifiNetworkSuggestion: status=$status")
+
+        val intentFilter = IntentFilter(WifiManager.ACTION_WIFI_NETWORK_SUGGESTION_POST_CONNECTION)
+        suggestionPostConnectionReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (!intent.action.equals(WifiManager.ACTION_WIFI_NETWORK_SUGGESTION_POST_CONNECTION)) {
+                    return
+                }
+                Log.d(TAG, "connectByWifiNetworkSuggestion: onReceive: ")
+                // do post connect processing here
+            }
+        }
+        registerReceiver(suggestionPostConnectionReceiver, intentFilter)
+    }
+
+    private fun connectByWifiNetworkSpecifier(wifi: Wifi, pass: String) {
+        Log.d(TAG, "connectByWifiNetworkSpecifier: wifi=$wifi, pass=$pass")
+        val specifier = WifiNetworkSpecifier.Builder()
+            .setSsid(wifi.ssid)
+        when (wifi.securityType) {
+            SECURITY_TYPE_WPA3 -> specifier.setWpa3Passphrase(pass)
+            SECURITY_TYPE_WPA2 -> specifier.setWpa2Passphrase(pass)
+            SECURITY_TYPE_WPA -> specifier.setWpa2Passphrase(pass)
+            SECURITY_TYPE_NA -> specifier.setWpa2Passphrase(pass)
+            else -> specifier.setWpa2Passphrase(pass)
+        }
+
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .setNetworkSpecifier(specifier.build())
+            .build()
+
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                Log.d(TAG, "onAvailable: network=$network")
+                // do success processing here..
+            }
+            override fun onUnavailable() {
+                super.onUnavailable()
+                Log.d(TAG, "onAvailable: ")
+                // do failure processing here..
+            }
+        }
+        connectivityManager.requestNetwork(request, networkCallback)
     }
 
     override fun onPause() {
@@ -128,7 +237,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy: ")
-        applicationContext.unregisterReceiver(wifiScanReceiver)
+        unregisterReceiver(wifiScanReceiver)
+
+        try {
+            unregisterReceiver(suggestionPostConnectionReceiver)
+        } catch (e: Exception) {
+            Log.d(TAG, "onDestroy: unregisterReceiver: e=$e")
+        }
+
+        try {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        } catch (e: Exception) {
+            Log.d(TAG, "onDestroy: unregisterNetworkCallback: e=$e")
+        }
+
         super.onDestroy()
     }
 }

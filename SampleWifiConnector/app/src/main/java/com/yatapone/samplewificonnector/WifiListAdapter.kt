@@ -9,7 +9,11 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.yatapone.samplewificonnector.databinding.WifiListCellBinding
 
-class WifiListAdapter : ListAdapter<Wifi, WifiListAdapter.WifiListViewHolder>(DiffCallback()) {
+class WifiListAdapter(private val clickListener: (wifi: Wifi) -> Unit) : ListAdapter<Wifi, WifiListAdapter.WifiListViewHolder>(DiffCallback()) {
+    companion object {
+        private const val TAG = "WifiListAdapter"
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): WifiListViewHolder {
         val binding = WifiListCellBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return WifiListViewHolder(binding)
@@ -22,8 +26,11 @@ class WifiListAdapter : ListAdapter<Wifi, WifiListAdapter.WifiListViewHolder>(Di
     inner class WifiListViewHolder(private val binding: WifiListCellBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(wifi: Wifi) {
             binding.ssid.text = wifi.ssid
-            binding.waveLevel.text = wifi.waveLevel.toString()
+            val waveLevelText = wifi.waveLevel.toString() + " dBm"
+            binding.waveLevel.text = waveLevelText
             binding.securityType.text = wifi.securityType
+
+            binding.wifiListCell.setOnClickListener { clickListener(wifi) }
         }
     }
 

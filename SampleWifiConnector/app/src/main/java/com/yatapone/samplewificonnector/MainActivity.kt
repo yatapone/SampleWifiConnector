@@ -12,6 +12,7 @@ import android.net.wifi.WifiNetworkSpecifier
 import android.net.wifi.WifiNetworkSuggestion
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
@@ -156,10 +157,19 @@ class MainActivity : AppCompatActivity() {
             .setMessage("input passphrase.")
             .setView(editText)
             .setPositiveButton("connect") { dialog, _ ->
+                val pass = editText.text.toString()
+
+                if (pass.isNotEmpty() && !pass.matches("^[A-Za-z0-9]+$".toRegex())) {
+                    Log.d(TAG, "onClickWifi: input error")
+                    Toast.makeText(this, "Please enter pass correctly (A-Za-z0-9).", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    return@setPositiveButton
+                }
+
                 if (binding.radioSuggestion.isChecked) {
-                    connectByWifiNetworkSuggestion(wifi, editText.text.toString())
+                    connectByWifiNetworkSuggestion(wifi, pass)
                 } else {
-                    connectByWifiNetworkSpecifier(wifi, editText.text.toString())
+                    connectByWifiNetworkSpecifier(wifi, pass)
                 }
                 dialog.dismiss()
             }
